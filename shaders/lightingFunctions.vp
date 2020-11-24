@@ -1,0 +1,25 @@
+vec3 ambientLighting(vec3 materialColor,vec3 ambientLightColor){
+  return materialColor * ambientLightColor;
+}
+
+vec3 diffuseLighting(vec3 N,vec3 L,vec3 materialColor,vec3 diffuseLightColor){
+  float diffuseFactor = max(dot(N,L),0);
+  return materialColor * diffuseLightColor * diffuseFactor;
+}
+
+vec3 specularLighting(vec3 N,vec3 L,vec3 V,vec3 specularMaterialColor,vec3 specularLightColor,float shininess){
+  vec3 R = -reflect(L,N);
+  float specularFactor = pow(max(dot(R,V),0),shininess);
+  return specularMaterialColor * specularLightColor * specularFactor;
+}
+
+vec3 lambertLighting(vec3 N,vec3 L, vec3 materialColor,vec3 ambientLightColor,vec3 diffuseLightColor){
+  return ambientLighting(materialColor,ambientLightColor) + diffuseLighting(N,L,materialColor,diffuseLightColor);
+}
+
+vec3 phongLighting(vec3 N,vec3 L,vec3 V,
+                   vec3 materialColor,vec3 specularMaterialColor,vec3 ambientLightColor,
+                   vec3 diffuseLightColor,vec3 specularLightColor,float shininess){
+  return lambertLighting (N,L,materialColor,ambientLightColor,diffuseLightColor   )+
+         specularLighting(N,L,V,specularMaterialColor,specularLightColor,shininess);
+}

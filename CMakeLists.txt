@@ -10,7 +10,14 @@ option(SDL_SHARED "" OFF)
 option(SDL_STATIC "" ON)
 add_subdirectory(libs/SDL2-2.0.12)
 
-add_executable(${PROJECT_NAME} main.cpp stb_image.h)
+set(SOURCES
+  src/main.cpp
+  src/stb_image.h
+  src/loadTxtFile.hpp
+  src/loadTxtFile.cpp
+  )
+
+add_executable(${PROJECT_NAME} ${SOURCES})
 
 add_subdirectory(libs/glm-0.9.9.8)
 

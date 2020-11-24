@@ -11,6 +11,8 @@
 #define STB_IMAGE_IMPLEMENTATION
 #include<stb_image.h>
 
+#include<loadTxtFile.hpp>
+
 using namespace ge::gl;
 
 GLuint createTexture(std::string const&fileName){
@@ -245,212 +247,10 @@ int main(int argc,char*argv[]){
 
   glVertexArrayElementBuffer(vao,ebo);
 
-
-
-  //Shader Program
-  //glCreateShader glShaderSource glCompileShader
-  //glCreateProgram glAttachShader glLinkShader
-
-
-  //GLSL 
-  std::string const vsSrc = R".(
-  #line 201
-
-  layout(location=0)in vec3 position;
-  layout(location=1)in vec3 normal  ;
-  layout(location=2)in vec2 coord   ;
-
-  out vec3 vNormal  ;
-  out vec2 vCoord   ;
-  out vec3 vPosition;
-  out vec3 vLighting;
-
-  uniform mat4 modelMatrix      = mat4(1);
-  uniform mat4 viewMatrix       = mat4(1);
-  uniform mat4 projectionMatrix = mat4(1);
-
-  uniform int lightingType = 0;
-
-  void main(){
-    vNormal   = normal;
-    vPosition = position;
-    vCoord    = coord;
-
-
-    vec3 ambientLight  = vec3(0.2,0.2,0.2);
-    vec3 diffuseLight  = vec3(1,1,1);
-    vec3 lightPosition = vec3(10,10,10);
-    vec3 materialColor = vec3(1,0,0);
-    vec3 specularMaterialColor = vec3(1,1,1);
-    vec3 specularLight = diffuseLight;
-    float shininess = 100.f;
-
-    vec3 L = normalize(lightPosition - position);
-
-    vec3 cameraPosition = vec3(inverse(viewMatrix) * vec4(0,0,0,1));
-    vec3 V = normalize(cameraPosition - position);
-
-    vec3 lighting;
-
-    if(lightingType == 0)
-      lighting = phongLighting(normal,L,V,materialColor,specularMaterialColor,ambientLight,diffuseLight,specularLight,shininess);
-
-    if(lightingType == 1)
-      lighting = lambertLighting(normal,L,materialColor,ambientLight,diffuseLight);
-
-    vLighting = lighting;
-
-    gl_Position = projectionMatrix * viewMatrix * modelMatrix * vec4(position,1);
-  }
-
-  ).";
-
-  std::string const lightingFunctionsSrc = R".(
-
-  vec3 ambientLighting(vec3 materialColor,vec3 ambientLightColor){
-    return materialColor * ambientLightColor;
-  }
-
-  vec3 diffuseLighting(vec3 N,vec3 L,vec3 materialColor,vec3 diffuseLightColor){
-    float diffuseFactor = max(dot(N,L),0);
-    return materialColor * diffuseLightColor * diffuseFactor;
-  }
-
-  vec3 specularLighting(vec3 N,vec3 L,vec3 V,vec3 specularMaterialColor,vec3 specularLightColor,float shininess){
-    vec3 R = -reflect(L,N);
-    float specularFactor = pow(max(dot(R,V),0),shininess);
-    return specularMaterialColor * specularLightColor * specularFactor;
-  }
-
-  vec3 lambertLighting(vec3 N,vec3 L, vec3 materialColor,vec3 ambientLightColor,vec3 diffuseLightColor){
-    return ambientLighting(materialColor,ambientLightColor) + diffuseLighting(N,L,materialColor,diffuseLightColor);
-  }
-
-  vec3 phongLighting(vec3 N,vec3 L,vec3 V,
-                     vec3 materialColor,vec3 specularMaterialColor,vec3 ambientLightColor,
-                     vec3 diffuseLightColor,vec3 specularLightColor,float shininess){
-    return lambertLighting (N,L,materialColor,ambientLightColor,diffuseLightColor   )+
-           specularLighting(N,L,V,specularMaterialColor,specularLightColor,shininess);
-  }
-
-  ).";
-
-  std::string const fsSrc = R".(
-  
-  layout(location=0)out vec4 fColor;
-
-  in vec3 gNormal  ;
-  in vec2 gCoord   ;
-  in vec3 gPosition;
-  in vec3 gLighting;
-
-  uniform int shadingType = 0;
-  uniform int lightingType = 0;
-
-  uniform mat4 viewMatrix = mat4(1);
-
-  layout(binding=0)uniform sampler2D image;
-
-  void main(){
-
-    vec3 ambientLight  = vec3(0.2,0.2,0.2);
-    vec3 diffuseLight  = vec3(1,1,1);
-    vec3 lightPosition = vec3(10,10,10);
-
-    
-
-    vec3 materialColor = vec3(1,0,0);
-
-    vec4 col = texture(image,gCoord);
-    
-    materialColor = col.rgb;
-
-    vec3 specularMaterialColor = vec3(1,1,1);
-    vec3 specularLight = diffuseLight;
-    float shininess = 200.f;
-
-    vec3 N = normalize(gNormal);
-    vec3 L = normalize(lightPosition - gPosition);
-  
-    vec3 cameraPosition = vec3(inverse(viewMatrix) * vec4(0,0,0,1));
-
-    vec3 V = normalize(cameraPosition - gPosition);
-
-
-    vec3 lighting;
-
-    if(shadingType == 0){
-
-      if(lightingType == 0)
-        lighting = phongLighting(N,L,V,materialColor,specularMaterialColor,ambientLight,diffuseLight,specularLight,shininess);
-
-      if(lightingType == 1)
-        lighting = lambertLighting(N,L,materialColor,ambientLight,diffuseLight);
-    }
-
-    if(shadingType == 1)
-      lighting = gLighting;
-
-    if(shadingType == 2){
-      if(lightingType == 0)
-        lighting = phongLighting(N,L,V,materialColor,specularMaterialColor,ambientLight,diffuseLight,specularLight,shininess);
-
-      if(lightingType == 1)
-        lighting = lambertLighting(N,L,materialColor,ambientLight,diffuseLight);
-    }
-
-
-
-    fColor = vec4(lighting,1);
-  }
-
-  ).";
-
-  
-  std::string const gsSrc = R".(
-
-  layout(triangles)in;
-  layout(triangle_strip,max_vertices=3)out;
-
-  in vec3 vNormal  [];
-  in vec2 vCoord   [];
-  in vec3 vPosition[];
-  in vec3 vLighting[];
-
-  out vec3 gNormal  ;
-  out vec2 gCoord   ;
-  out vec3 gPosition;
-  out vec3 gLighting;
-
-  uniform int shadingType = 0;
-
-  void main(){
-    vec3 normal = normalize(vNormal[0] + vNormal[1] + vNormal[2]);
-
-    for(int i=0;i<3;++i){
-      gl_Position = gl_in[i].gl_Position;
-
-      if(shadingType == 2)
-        gNormal     = normal;
-      else
-        gNormal     = vNormal[i];
-
-      gCoord      = vCoord   [i];
-      gPosition   = vPosition[i];
-      gLighting   = vLighting[i];
-      EmitVertex();
-    }
-    EndPrimitive();
-
-  }
-
-  ).";
-
   GLuint prg;
   prg = createProgram({
-      createShader(GL_VERTEX_SHADER  ,"#version 460\n" + lightingFunctionsSrc + vsSrc),
-      createShader(GL_GEOMETRY_SHADER,"#version 460\n" +                        gsSrc),
-      createShader(GL_FRAGMENT_SHADER,"#version 460\n" + lightingFunctionsSrc + fsSrc)
+      createShader(GL_VERTEX_SHADER  ,"#version 460\n" + loadTxtFile("../shaders/earth.vp")),
+      createShader(GL_FRAGMENT_SHADER,"#version 460\n" + loadTxtFile("../shaders/lightingFunctions.vp") + loadTxtFile("../shaders/earth.fp"))
       });
 
   //locations
@@ -478,7 +278,7 @@ int main(int argc,char*argv[]){
   int  shadingType = 0;
   bool lambertLighting = false;
 
-  auto tex = createTexture("../earth.png");
+  auto tex = createTexture("../images/earth.png");
 
   glBindTextureUnit(0,tex);
 
