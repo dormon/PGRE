@@ -156,9 +156,9 @@ int main(int argc,char*argv[]){
   vao->addAttrib(vbo,2,2,GL_FLOAT,sizeof(Vertex),sizeof(float)*6);
   vao->addElementBuffer(ebo);
 
-  auto prg = std::make_shared<ge::gl::Program>(
-      std::make_shared<ge::gl::Shader>(GL_VERTEX_SHADER  ,"#version 460\n",loadTxtFile("../shaders/earth.vp")),
-      std::make_shared<ge::gl::Shader>(GL_FRAGMENT_SHADER,"#version 460\n",loadTxtFile("../shaders/lightingFunctions.vp"), loadTxtFile("../shaders/earth.fp"))
+  auto prg = std::make_shared<Program>(
+      std::make_shared<Shader>(GL_VERTEX_SHADER  ,"#version 460\n",loadTxtFile("../shaders/earth.vp")),
+      std::make_shared<Shader>(GL_FRAGMENT_SHADER,"#version 460\n",loadTxtFile("../shaders/lightingFunctions.vp"), loadTxtFile("../shaders/earth.fp"))
       );
   prg->setNonexistingUniformWarning(false);
 
