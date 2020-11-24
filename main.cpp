@@ -8,7 +8,53 @@
 #include<glm/mat3x3.hpp>
 #include<glm/gtx/transform.hpp>
 
+#define STB_IMAGE_IMPLEMENTATION
+#include<stb_image.h>
+
 using namespace ge::gl;
+
+GLuint createTexture(std::string const&fileName){
+  int texx;
+  int texy;
+  int channels;
+  std::cerr << "loading: " << fileName << std::endl;
+  auto pixels = stbi_load(fileName.c_str(),&texx,&texy,&channels,0);
+  std::cerr << "channels: " << channels << std::endl;
+  std::cerr << "texx: " << texx << std::endl;
+  std::cerr << "texy: " << texy << std::endl;
+
+  for(int y=0;y<texy/2;++y){
+    for(int x=0;x<texx;++x){
+      for(int c=0;c<channels;++c){
+        auto z = pixels[(y*texx+x)*channels + c];
+        pixels[(y*texx+x)*channels + c] = pixels[((texy-y-1)*texx+x)*channels + c];
+        pixels[((texy-y-1)*texx+x)*channels + c] = z;
+      }
+    }
+  }
+
+  GLuint tex;
+  glCreateTextures(GL_TEXTURE_2D,1,&tex);
+  glBindTexture(GL_TEXTURE_2D,tex);
+
+  glPixelStorei(GL_UNPACK_ROW_LENGTH,texx);
+  glPixelStorei(GL_UNPACK_ALIGNMENT ,1   );
+
+  if(channels == 3)
+    glTexImage2D(GL_TEXTURE_2D,0,GL_RGB8,texx,texy,0,GL_RGB,GL_UNSIGNED_BYTE,pixels);
+
+  if(channels == 4)
+    glTexImage2D(GL_TEXTURE_2D,0,GL_RGBA8,texx,texy,0,GL_RGBA,GL_UNSIGNED_BYTE,pixels);
+
+  stbi_image_free(pixels);
+
+  glTextureParameteri(tex,GL_TEXTURE_MIN_FILTER,GL_LINEAR);
+  glTextureParameteri(tex,GL_TEXTURE_MAG_FILTER,GL_LINEAR);
+  glTextureParameteri(tex,GL_TEXTURE_WRAP_S,GL_REPEAT);
+  glTextureParameteri(tex,GL_TEXTURE_WRAP_T,GL_REPEAT);
+
+  return tex;
+}
 
 GLuint createShader(GLenum type,std::string const&src){
   GLuint id = glCreateShader(type);
@@ -68,6 +114,11 @@ GLuint createProgram(std::vector<GLuint> const&shaders){
   return prg;
 }
 
+void printError(GLenum source,GLenum type, GLuint id,GLenum severity, GLsizei length, const GLchar *message,const GLvoid*userParam){
+  std::cerr << "My Error: " << message << std::endl;
+}
+
+
 int main(int argc,char*argv[]){
   //SDL2 glfw glaux QT ...
   SDL_Init(SDL_INIT_EVERYTHING);
@@ -81,9 +132,14 @@ int main(int argc,char*argv[]){
   //create opengl context
   SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 4);
   SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 6);
+  SDL_GL_SetAttribute(SDL_GL_CONTEXT_FLAGS,SDL_GL_CONTEXT_DEBUG_FLAG);
   auto context  = SDL_GL_CreateContext(window);
 
   ge::gl::init();
+
+  glDebugMessageCallback(printError,nullptr);
+
+  //ge::gl::setDefaultDebugMessage();
  
   //Empty Vertex Array (empty Vertex Puller setting)
 
@@ -95,6 +151,7 @@ int main(int argc,char*argv[]){
   struct Vertex{
     glm::vec3 position;
     glm::vec3 normal  ;
+    glm::vec2 coord   ;
   };
 
   std::vector<Vertex>vertices;
@@ -107,7 +164,7 @@ int main(int argc,char*argv[]){
       Vertex vertex;
 
       float yangleNorm = (float)iy / (float)(ny-1);
-      float xangleNorm = (float)ix / (float)(nx  );
+      float xangleNorm = (float)ix / (float)(nx-1);
 
       float xangle = xangleNorm * glm::pi<float>() * 2.f;
       float yangle = yangleNorm * glm::pi<float>()      ;
@@ -118,6 +175,7 @@ int main(int argc,char*argv[]){
 
       vertex.position = glm::vec3(x,y,z);
       vertex.normal   = glm::normalize(vertex.position);
+      vertex.coord    = glm::vec2(1-xangleNorm,yangleNorm);
 
       vertices.push_back(vertex);
     }
@@ -141,7 +199,7 @@ int main(int argc,char*argv[]){
   std::vector<Face>faces;
 
   for(uint32_t iy=0;iy<ny-1;++iy){
-    for(uint32_t ix=0;ix<nx;++ix){
+    for(uint32_t ix=0;ix<nx-1;++ix){
       Face face;
 
       face.triangleA[0] = (iy  )*nx + (ix       );
@@ -158,7 +216,6 @@ int main(int argc,char*argv[]){
 
   //for(auto &f:faces)
   //  f.print();
-
 
   GLuint ebo;
   glCreateBuffers(1,&ebo);
@@ -180,6 +237,12 @@ int main(int argc,char*argv[]){
   glVertexArrayVertexBuffer (vao,1,vbo,sizeof(float)*3,sizeof(Vertex));
   glVertexArrayAttribBinding(vao,1,1);
 
+  //tex coord
+  glEnableVertexArrayAttrib (vao,2);
+  glVertexArrayAttribFormat (vao,2,2,GL_FLOAT,GL_FALSE,0);
+  glVertexArrayVertexBuffer (vao,2,vbo,sizeof(float)*6,sizeof(Vertex));
+  glVertexArrayAttribBinding(vao,2,2);
+
   glVertexArrayElementBuffer(vao,ebo);
 
 
@@ -195,8 +258,10 @@ int main(int argc,char*argv[]){
 
   layout(location=0)in vec3 position;
   layout(location=1)in vec3 normal  ;
+  layout(location=2)in vec2 coord   ;
 
-  out vec3 vNormal;
+  out vec3 vNormal  ;
+  out vec2 vCoord   ;
   out vec3 vPosition;
   out vec3 vLighting;
 
@@ -207,8 +272,9 @@ int main(int argc,char*argv[]){
   uniform int lightingType = 0;
 
   void main(){
-    vNormal = normal;
+    vNormal   = normal;
     vPosition = position;
+    vCoord    = coord;
 
 
     vec3 ambientLight  = vec3(0.2,0.2,0.2);
@@ -273,7 +339,8 @@ int main(int argc,char*argv[]){
   
   layout(location=0)out vec4 fColor;
 
-  in vec3 gNormal;
+  in vec3 gNormal  ;
+  in vec2 gCoord   ;
   in vec3 gPosition;
   in vec3 gLighting;
 
@@ -282,12 +349,21 @@ int main(int argc,char*argv[]){
 
   uniform mat4 viewMatrix = mat4(1);
 
+  layout(binding=0)uniform sampler2D image;
+
   void main(){
 
     vec3 ambientLight  = vec3(0.2,0.2,0.2);
     vec3 diffuseLight  = vec3(1,1,1);
     vec3 lightPosition = vec3(10,10,10);
+
+    
+
     vec3 materialColor = vec3(1,0,0);
+
+    vec4 col = texture(image,gCoord);
+    
+    materialColor = col.rgb;
 
     vec3 specularMaterialColor = vec3(1,1,1);
     vec3 specularLight = diffuseLight;
@@ -336,11 +412,13 @@ int main(int argc,char*argv[]){
   layout(triangles)in;
   layout(triangle_strip,max_vertices=3)out;
 
-  in vec3 vNormal[];
+  in vec3 vNormal  [];
+  in vec2 vCoord   [];
   in vec3 vPosition[];
   in vec3 vLighting[];
 
-  out vec3 gNormal;
+  out vec3 gNormal  ;
+  out vec2 gCoord   ;
   out vec3 gPosition;
   out vec3 gLighting;
 
@@ -357,6 +435,7 @@ int main(int argc,char*argv[]){
       else
         gNormal     = vNormal[i];
 
+      gCoord      = vCoord   [i];
       gPosition   = vPosition[i];
       gLighting   = vLighting[i];
       EmitVertex();
@@ -398,6 +477,10 @@ int main(int argc,char*argv[]){
 
   int  shadingType = 0;
   bool lambertLighting = false;
+
+  auto tex = createTexture("../earth.png");
+
+  glBindTextureUnit(0,tex);
 
   while(running){//main loop
 
@@ -447,6 +530,7 @@ int main(int argc,char*argv[]){
         if(event.motion.state & SDL_BUTTON_LMASK){
           camXAngle += event.motion.xrel * 0.01f;
           camYAngle += event.motion.yrel * 0.01f;
+          camYAngle = glm::clamp(camYAngle,-glm::half_pi<float>()*0.99f,+glm::half_pi<float>()*0.99f);
         }
         if(event.motion.state & SDL_BUTTON_RMASK){
           camDistance += event.motion.yrel * 0.1f;
@@ -471,8 +555,8 @@ int main(int argc,char*argv[]){
 
 
     glEnable(GL_DEPTH_TEST);
-    //glClearColor(0.1,0.1,0.1,1);
-    glClearColor(0,0,0,1);
+    glClearColor(0.1,0.1,0.1,1);
+    //glClearColor(0,0,0,1);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
     glBindVertexArray(vao);
